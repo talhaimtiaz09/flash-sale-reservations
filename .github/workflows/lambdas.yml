@@ -21,6 +21,7 @@ on:
       - "scripts/**"
       - "pyproject.toml"
       - ".github/workflows/lambdas.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
