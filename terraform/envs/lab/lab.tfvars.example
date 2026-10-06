@@ -1,0 +1,21 @@
+# Optional overrides for local runs: copy to lab.tfvars (gitignored) and pass
+# -var-file=lab.tfvars. CI applies the defaults in variables.tf, so a change
+# meant to stick goes in there through a PR.
+
+# Alarm email. Prefer TF_VAR_alarm_email (CI sets it from the ALARM_EMAIL
+# repository variable) so the address isn't committed to a public repo.
+# alarm_email = "you@example.com"
+
+# ttl-return load test: short holds so expired units come back within minutes.
+# hold_seconds = 60
+
+# Where a burst gets told no. Keep the API limits below what the table cap and
+# the account's Lambda concurrency can serve, so clients see API Gateway's 429.
+# api_throttle_rate_limit  = 500
+# api_throttle_burst_limit = 1000
+
+# Only once the account's Lambda quota is well above 100 (see README).
+# reserve_reserved_concurrency = 200
+
+# table_max_read_request_units  = 4000
+# table_max_write_request_units = 4000

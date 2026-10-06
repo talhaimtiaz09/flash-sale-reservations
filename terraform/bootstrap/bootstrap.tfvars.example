@@ -1,0 +1,9 @@
+# Copy to bootstrap.tfvars (gitignored) and apply once, locally, with admin
+# credentials: terraform apply -var-file=bootstrap.tfvars
+#
+# The account must already have the token.actions.githubusercontent.com OIDC
+# provider (immutable-ec2-web-tier's bootstrap creates it). Check with:
+#   aws iam list-open-id-connect-providers
+
+budget_alert_email = "you@example.com"
+budget_limit_usd   = 10
