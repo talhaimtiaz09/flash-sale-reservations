@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flash-Sale Reservations</title>
+<meta name="description" content="Personal AWS lab by Talha Imtiaz: a flash-sale reservation service on API Gateway, Lambda and DynamoDB, designed against overselling, a hot item, late TTL deletes, retries and bursts. Terraform, applied from CI over GitHub OIDC. Load tests written, not yet run.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Theme follows talhaimtiaz.me case studies: warm cream canvas, lime accent,
+   Space Grotesk for the hero, Geist for reading. Dark is the site's matte carbon. */
+:root {
+  --canvas: #f4efe4;
+  --band: #f8f3e8;
+  --surface: #fdfbf5;
+  --surface-muted: #efe8db;
+  --ink: #2b2720;
+  --ink-strong: #1a1610;
+  --muted: #6b6555;
+  --soft: #8c8678;
+  --line: #e0d8c7;
+  --line-strong: #847b66;
+  --accent: #6e8710;
+  --accent-dot: #a7b64e;
+  --code-ink: #5c7010;
+  --danger: #a8321f;
+
+  --f-head: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Geist", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #040404;
+    --band: #0f100d;
+    --surface: #131313;
+    --surface-muted: #1e1f1a;
+    --ink: #dcddd3;
+    --ink-strong: #f8f8f4;
+    --muted: #a0a298;
+    --soft: #76786f;
+    --line: #2d2e28;
+    --line-strong: #82847a;
+    --accent: #b8d94a;
+    --accent-dot: #b8c674;
+    --code-ink: #c9e85f;
+    --danger: #e07a64;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #040404;
+  --band: #0f100d;
+  --surface: #131313;
+  --surface-muted: #1e1f1a;
+  --ink: #dcddd3;
+  --ink-strong: #f8f8f4;
+  --muted: #a0a298;
+  --soft: #76786f;
+  --line: #2d2e28;
+  --line-strong: #82847a;
+  --accent: #b8d94a;
+  --accent-dot: #b8c674;
+  --code-ink: #c9e85f;
+  --danger: #e07a64;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 17px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--accent); color: var(--canvas); }
+a { color: var(--accent); font-weight: 600; text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.wrap { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+.read { max-width: 720px; }
+@media (min-width: 640px) { .wrap { padding: 0 40px; } }
+
+/* nav */
+.nav { border-bottom: 1px solid var(--line); }
+.nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 60px; }
+.nav .name { font-family: var(--f-head); font-weight: 700; color: var(--ink-strong); font-size: 16px; }
+.nav ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.nav ul a { color: var(--muted); font-weight: 500; }
+.nav ul a:hover { color: var(--ink-strong); text-decoration: none; }
+
+/* hero */
+.hero { padding: 56px 0 48px; border-bottom: 1px solid var(--line); }
+@media (min-width: 900px) { .hero { padding: 88px 0 64px; } }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+.pill {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  padding: 3px 12px; color: var(--ink);
+}
+h1 {
+  font-family: var(--f-head); font-weight: 700; color: var(--ink-strong);
+  font-size: clamp(2.1rem, 1.3rem + 3.4vw, 3.9rem);
+  line-height: 1.06; letter-spacing: -0.02em;
+  max-width: 900px; margin: 0;
+}
+.summary { margin: 24px 0 0; max-width: 680px; font-size: clamp(1.05rem, 1rem + 0.35vw, 1.25rem); line-height: 1.6; color: var(--muted); }
+.spec {
+  display: grid; gap: 20px; grid-template-columns: 1fr;
+  margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--line); max-width: 800px;
+}
+@media (min-width: 640px) { .spec { grid-template-columns: 1fr 2fr auto; } }
+.spec dt { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin-bottom: 6px; }
+.spec dd { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.45; color: var(--ink); }
+
+/* figures */
+figure { margin: 0; }
+.frame { border: 1px solid var(--line); border-radius: 16px; padding: 8px; background: var(--surface); }
+.frame img { display: block; width: 100%; height: auto; border-radius: 10px; }
+figure.hero-fig { margin-top: 48px; }
+figure.diagram { margin: 40px 0; }
+figcaption { margin-top: 12px; text-align: center; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); }
+/* Until the image file exists, show a labelled slot instead of a broken image. */
+figure.missing img { display: none; }
+figure.missing .frame {
+  aspect-ratio: 3 / 2; border-style: dashed; border-color: var(--line-strong);
+  background: var(--surface-muted); display: grid; place-items: center; padding: 24px; text-align: center;
+}
+figure.missing .frame::after {
+  content: "Diagram slot · " attr(data-file);
+  font-family: var(--f-mono); font-size: 12px; color: var(--muted);
+}
+
+/* reading band */
+main { background: var(--band); border-bottom: 1px solid var(--line); padding: 48px 0 72px; }
+@media (min-width: 900px) { main { padding: 80px 0 96px; } }
+.lead { font-size: clamp(1.2rem, 1.1rem + 0.4vw, 1.375rem); line-height: 1.55; color: var(--ink-strong); margin: 0 0 32px; letter-spacing: -0.01em; }
+h2 {
+  font-family: var(--f-body); font-weight: 600; color: var(--ink-strong);
+  font-size: clamp(1.375rem, 1.2rem + 0.8vw, 1.875rem); letter-spacing: -0.015em; line-height: 1.25;
+  margin: 64px 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line);
+}
+h3 { font-weight: 600; font-size: 1.2rem; color: var(--ink-strong); margin: 40px 0 8px; letter-spacing: -0.01em; }
+p { margin: 18px 0; }
+ul.dots { list-style: none; padding: 0; margin: 20px 0; }
+ul.dots li { position: relative; padding-left: 22px; margin: 10px 0; }
+ul.dots li::before { content: ""; position: absolute; left: 2px; top: 0.72em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-dot); }
+code {
+  font-family: var(--f-mono); font-size: 0.86em; font-weight: 500; color: var(--code-ink);
+  background: var(--surface-muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px;
+  overflow-wrap: anywhere;
+}
+strong { color: var(--ink-strong); font-weight: 600; }
+
+/* code block */
+.code { margin: 32px 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.code-head { display: flex; justify-content: space-between; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.code pre { margin: 0; padding: 18px 20px; overflow-x: auto; font-family: var(--f-mono); font-size: 13.5px; line-height: 1.75; color: var(--ink); }
+.code pre .c { color: var(--soft); }
+
+/* decision card (same shape as the site's <Decision>) */
+.decision { margin: 32px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.decision .tag { padding: 10px 20px; border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.decision .pair { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--line); }
+@media (min-width: 640px) { .decision .pair { grid-template-columns: 1fr 1fr; } }
+.decision .pair > div { background: var(--surface); padding: 16px 20px; }
+.decision .k { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+.decision .chose .k { color: var(--accent); }
+.decision .over .k { color: var(--soft); }
+.decision .pair p { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.45; }
+.decision .over p { color: var(--muted); }
+.decision .why { border-top: 1px solid var(--line); padding: 14px 20px; margin: 0; font-size: 15px; line-height: 1.7; color: var(--muted); }
+.decision .why strong { color: var(--ink-strong); }
+
+/* status + cost tables */
+.table-wrap { overflow-x: auto; margin: 24px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--f-mono); font-size: 14px; white-space: nowrap; }
+.state { font-weight: 600; width: 45%; }
+.state.done { color: var(--accent); }
+.state.todo { color: var(--soft); }
+.note { font-size: 13px; color: var(--soft); margin-top: -8px; }
+
+/* footer */
+footer { padding: 40px 0 56px; font-size: 14px; color: var(--muted); }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+footer ul { display: flex; flex-wrap: wrap; gap: 20px; list-style: none; margin: 0; padding: 0; }
+footer a { color: var(--muted); font-weight: 500; }
+footer a:hover { color: var(--ink-strong); }
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Site">
+  <div class="wrap">
+    <a class="name" href="https://talhaimtiaz.me">Talha Imtiaz</a>
+    <ul>
+      <li><a href="https://github.com/talhaimtiaz09/flash-sale-reservations">Repository</a></li>
+      <li><a href="https://talhaimtiaz.me">Portfolio</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="pills">
+      <span class="pill">Personal project</span>
+      <span class="pill">AWS lab</span>
+      <span class="pill">In progress</span>
+    </div>
+    <h1>Selling the Last Unit Exactly Once: Flash-Sale Reservations on Lambda and DynamoDB</h1>
+    <p class="summary">A small reservation service for a fixed stock sold to far more buyers than there are units, all in the same few seconds. With ten users it's CRUD. With ten thousand it oversells, overloads one DynamoDB item and loses stock to late TTL deletes. This is how I designed around each of those, and the load tests that will check it.</p>
+    <dl class="spec">
+      <div><dt>Role</dt><dd>DevOps Engineer. Design and all code.</dd></div>
+      <div><dt>Stack</dt><dd>API Gateway HTTP API, Lambda (Python, arm64), DynamoDB Streams and TTL, EventBridge, CloudWatch, Terraform, GitHub Actions OIDC, k6</dd></div>
+      <div><dt>Code</dt><dd><a href="https://github.com/talhaimtiaz09/flash-sale-reservations">GitHub ↗</a></dd></div>
+    </dl>
+    <figure class="hero-fig">
+      <div class="frame" data-file="images/flash-architecture.png">
+        <img src="images/flash-architecture.png" width="1536" height="1024" alt="Architecture: buyers call an API Gateway HTTP API, which throttles and then routes to three Lambda functions: reserve, confirm and get sale. All three use one DynamoDB table. The table's stream feeds a release function that returns stock when TTL deletes an unconfirmed hold, and an EventBridge schedule runs a sweeper that does the same for expired holds without waiting for TTL. CloudWatch alarms send email through SNS." onerror="this.closest('figure').classList.add('missing')">
+      </div>
+      <figcaption>One API, five functions, one table</figcaption>
+    </figure>
+  </div>
+</header>
+
+<main>
+  <div class="wrap"><div class="read">
+
+    <p class="lead">Most of my client work is servers that run all day. This lab is the opposite shape: nothing runs until a buyer shows up, and then everyone shows up at once. The job is small and strict. Sell every unit exactly once, while far more people than there are units press the same button.</p>
+
+    <h2>The situation</h2>
+    <p>This is a personal lab, not client work. It has no users, and it hasn't been deployed yet. Every number on this page is a design value, a documented AWS limit or a list price. The load tests are written. Until each one has run against a real deployment, it says "Not run" here, and the results go up as measured, including the misses.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>Lambdas: reserve, confirm, get_sale, release, sweeper</td><td class="state done">Written, 36 unit tests pass, ruff clean</td></tr>
+          <tr><td>Terraform: bootstrap, table, functions, API, alarms</td><td class="state done">Written, passes fmt, validate, tflint, trivy</td></tr>
+          <tr><td>CI: plan on PR, approved apply, Lambda tests</td><td class="state done">Written, passes actionlint</td></tr>
+          <tr><td>Seed script, five k6 tests, runbooks</td><td class="state done">Written</td></tr>
+          <tr><td>Deployed to AWS</td><td class="state todo">Not yet</td></tr>
+          <tr><td>Load tests</td><td class="state todo">Not run</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>The problem</h2>
+    <p>The ten-user version is three lines: read the stock, check it's above zero, write it back minus one. Put 10,000 buyers on 1,000 units in the same few seconds and five things go wrong.</p>
+    <ul class="dots">
+      <li><strong>Overselling.</strong> Two buyers read "1 left" at the same moment, and both buy it.</li>
+      <li><strong>The hot item.</strong> Every buyer writes the same stock item, and one DynamoDB partition has a write limit.</li>
+      <li><strong>Late TTL.</strong> Unpaid holds should expire and go back on sale. DynamoDB's TTL deletes them, but it can run hours late.</li>
+      <li><strong>Retries and double clicks.</strong> A buyer who clicks twice, or a client that retries a timeout, must not get two holds.</li>
+      <li><strong>Failing politely.</strong> When the burst is bigger than the system, buyers should get a clear "try again", not errors, and the bill should stay small.</li>
+    </ul>
+
+    <h2>What I built</h2>
+    <p>One HTTP API in front of three functions: <code>reserve</code> holds units for ten minutes, <code>confirm</code> turns a hold into an order (a stand-in for payment), and <code>get_sale</code> reads what's left. Two more functions return stock from holds nobody paid for. Everything lives in one DynamoDB table, billed on demand, so idle time costs next to nothing.</p>
+
+    <h3>1. Two buyers, one last unit</h3>
+    <p>The fix for overselling is to never read before writing. The stock check is a condition on the write itself: take <code>qty</code> from the stock only if the stock is at least <code>qty</code>. DynamoDB applies the condition and the write as one step, so when two buyers race for the last unit, one write succeeds and the other's condition fails.</p>
+    <p>That update runs inside a transaction with two more writes: the hold, and a record of the buyer's Idempotency-Key. All three happen, or none do. If the transaction is cancelled, DynamoDB says which item failed, and that tells the function what to answer. A failed stock condition means this shard is empty. A failed key condition means the buyer already has a hold.</p>
+    <div class="code">
+      <div class="code-head"><span>lambdas/reserve/reserve.py</span><span>excerpt</span></div>
+<pre><span class="c"># [0] stock, [1] hold, [2] idempotency key: all or nothing</span>
+{"Update": {"Key": shard_key(sale_id, shard),
+            "UpdateExpression": "SET stock = stock - :qty",
+            "ConditionExpression": "stock >= :qty"}},
+{"Put": {"Item": hold}},
+{"Put": {"Item": idempotency_record,
+         "ConditionExpression": "attribute_not_exists(pk)"}},</pre>
+    </div>
+    <figure class="diagram">
+      <div class="frame" data-file="images/flash-reserve-transaction.png">
+        <img src="images/flash-reserve-transaction.png" width="1536" height="1024" alt="One reservation as a single DynamoDB transaction with three writes: take units from one stock shard only if it has enough, write the hold, and write the idempotency key only if it is new. If the stock condition fails, the function tries the next shard. If the key condition fails, it returns the buyer's existing hold. If all three succeed, the buyer gets a new hold." loading="lazy" onerror="this.closest('figure').classList.add('missing')">
+      </div>
+      <figcaption>Three writes that succeed or fail together</figcaption>
+    </figure>
+    <div class="decision">
+      <div class="tag">Engineering decision</div>
+      <div class="pair">
+        <div class="chose"><div class="k">Chose</div><p>One transaction for stock, hold and key</p></div>
+        <div class="over"><div class="k">Over</div><p>A conditional decrement, then a separate hold write</p></div>
+      </div>
+      <p class="why"><strong>Why: </strong>With two writes, a function that dies between them has taken a unit with no hold to give it back. The transaction closes that gap. The cost is that transactional writes are billed at double rate: a reservation uses about 7 write units instead of about 4.</p>
+    </div>
+
+    <h3>2. The hot item</h3>
+    <p>A single DynamoDB partition handles about 1,000 write units a second, and a transactional write costs two. So if every buyer decrements the same stock item, the whole sale runs through one partition, with a ceiling of roughly 500 reservations a second on paper. There is a second limit before that one: transactions that touch the same item at the same moment cancel each other with a <code>TransactionConflict</code>.</p>
+    <p>So the stock is split across N shard items. Each reservation starts at a random shard. If that shard can't cover the order, it tries the others in random order, and it only answers "sold out" after every shard has said no. A conflict gets two more tries on that shard, with a few milliseconds of random wait. After that the answer is a 429, not "sold out", because the function doesn't actually know the shard is empty.</p>
+    <p>Two smaller hot spots got the same treatment. The sale's metadata never changes after seeding, so each warm function reads it once and keeps it. The index of live holds is keyed by one of 10 buckets rather than a single value, so it doesn't become the new hot partition.</p>
+    <figure class="diagram">
+      <div class="frame" data-file="images/flash-sharded-stock.png">
+        <img src="images/flash-sharded-stock.png" width="1536" height="1024" alt="Two designs compared. Rejected: every buyer writes one stock item in one partition, which throttles and conflicts. Chosen: the stock is split into several shard items; each buyer starts at a random shard and moves to another if it is empty. The sale's remaining stock is the sum of the shards." loading="lazy" onerror="this.closest('figure').classList.add('missing')">
+      </div>
+      <figcaption>One stock item, or the same stock in shards</figcaption>
+    </figure>
+    <div class="decision">
+      <div class="tag">Engineering decision</div>
+      <div class="pair">
+        <div class="chose"><div class="k">Chose</div><p>Stock split across N shard items</p></div>
+        <div class="over"><div class="k">Over</div><p>One stock counter per sale</p></div>
+      </div>
+      <p class="why"><strong>Why: </strong>It spreads the writes across items and partitions. The cost shows near sell-out: the last units end up scattered. A buyer who wants 2 can be told "sold out" while three shards each hold 1, because one order comes from one shard. Reading the stock means summing every shard. The hot-key test runs the same burst against 1 shard and against 10 to measure what the split is actually worth.</p>
+    </div>
+
+    <h3>3. TTL that runs late</h3>
+    <p>A hold lasts ten minutes. Its item carries a TTL, but DynamoDB deletes expired items in the background, and that can happen hours, even days, after the expiry time. Until then, the units are stuck in a hold nobody can pay for. That's worst in the last minutes of a sale, which is exactly when they matter. So TTL is only cleanup here, and three other things handle expiry:</p>
+    <ul class="dots">
+      <li><strong>Confirm checks the time itself.</strong> The confirm write has a condition that the hold is still <code>HELD</code> and <code>expires_at</code> is in the future. An expired hold gets a 409 even if its item still exists.</li>
+      <li><strong>A sweeper runs every minute.</strong> It reads a sparse index that only contains live holds, deletes the expired ones and puts their units back.</li>
+      <li><strong>A stream consumer catches TTL deletes.</strong> When TTL does delete a hold that was never confirmed, the table's stream hands the old item to a function that returns its units. It only acts on deletes made by DynamoDB's TTL process, and an event filter means it's only invoked for those.</li>
+    </ul>
+    <p>The sweeper and the stream can both see the same hold, and stream batches are retried on failure. So returning stock has to be safe to run twice. Each return writes a <code>RETURN#&lt;hold&gt;</code> marker in the same transaction as the stock increment, on the condition that the marker doesn't exist yet. The second attempt fails on the marker and changes nothing.</p>
+    <figure class="diagram">
+      <div class="frame" data-file="images/flash-hold-lifecycle.png">
+        <img src="images/flash-hold-lifecycle.png" width="1536" height="1024" alt="Lifecycle of a hold. A reservation creates a hold in the HELD state. Confirmed before it expires, it becomes an order. Not confirmed in time, confirm is refused, and the units go back to stock by one of two paths: the sweeper, which runs every minute, or the stream consumer after a TTL delete. Both paths write a return marker in the same transaction, so the units come back once." loading="lazy" onerror="this.closest('figure').classList.add('missing')">
+      </div>
+      <figcaption>Every unpaid hold comes back once, by either path</figcaption>
+    </figure>
+    <div class="decision">
+      <div class="tag">Engineering decision</div>
+      <div class="pair">
+        <div class="chose"><div class="k">Chose</div><p>A sweeper and the TTL stream, both returning stock</p></div>
+        <div class="over"><div class="k">Over</div><p>Relying on TTL deletes alone</p></div>
+      </div>
+      <p class="why"><strong>Why: </strong>TTL alone keeps units locked for as long as TTL lags. The sweeper is scheduled to bring them back within a minute or two of expiry, and the stream covers anything TTL deletes first. The cost is two code paths that can reach the same hold, which is why every return is idempotent.</p>
+    </div>
+    <p>If the stream consumer keeps failing on a batch, it splits the batch to isolate the bad record, retries five times, then sends the batch's position to a dead-letter queue, which raises an alarm. That message holds stream positions, not the records. They have to be replayed within the stream's 24-hour retention, or those units stay held. The replay tool isn't written yet.</p>
+
+    <h3>4. Retries and double clicks</h3>
+    <p>Every reservation needs an <code>Idempotency-Key</code> header. The key is written in the same transaction as the hold, on the condition that it's new. The same key again gets a 200 with the original hold, never a second one. Only one transaction can write the key, so even 50 copies arriving at once should make one hold; the idempotency test checks exactly that. Reusing a key for a different request gets a 422. Keys expire after 24 hours.</p>
+    <p>This also covers a retry the buyer never sees. If the SDK times out after DynamoDB has already committed, its retry fails on the key condition and returns the hold that was just made.</p>
+
+    <h3>5. Failing politely</h3>
+    <p>When a burst is bigger than the system, I want the extra buyers to get a 429 with a <code>Retry-After</code> header, not a 5xx. There are four layers:</p>
+    <ul class="dots">
+      <li><strong>API Gateway stage throttling.</strong> Past the rate and burst limits, API Gateway answers 429 itself and no function runs.</li>
+      <li><strong>The function's own 429.</strong> A DynamoDB throttle, or shards that keep conflicting, becomes a 429 with <code>Retry-After: 1</code>.</li>
+      <li><strong>A cap on the table.</strong> The on-demand table has a maximum throughput, so a runaway test is throttled instead of billed.</li>
+      <li><strong>Reserved concurrency, off by default.</strong> New accounts can have a Lambda concurrency quota as low as 10, and Lambda refuses any reservation that leaves fewer than 100 unreserved. So it's a variable that defaults to null, and the README says why.</li>
+    </ul>
+    <div class="decision">
+      <div class="tag">Engineering decision</div>
+      <div class="pair">
+        <div class="chose"><div class="k">Chose</div><p>One SDK retry, then a 429 to the client</p></div>
+        <div class="over"><div class="k">Over</div><p>The AWS SDK's default retries</p></div>
+      </div>
+      <p class="why"><strong>Why: </strong>A throttled table needs less traffic. Default retries turn every request into several at exactly the wrong moment. Handing the wait to the client, with jitter, spreads the retries out. The cost is that buyers see more 429s, and a client has to handle them.</p>
+    </div>
+
+    <h3>Least privilege down to the key</h3>
+    <p>Each function has its own IAM role, and each role only reaches the key prefixes that function uses, through the <code>dynamodb:LeadingKeys</code> condition. <code>confirm</code> can update holds and nothing else. <code>reserve</code> can't delete anything. Only the sweeper can delete a hold. CI reaches AWS through GitHub OIDC with a read-only role for plans and a separate apply role behind a required reviewer, so there are no AWS keys stored in GitHub.</p>
+
+    <h2>Load tests</h2>
+    <p>Five k6 tests, one per problem. Each writes a JSON results file and has a runbook in the repo, with fields for the date, commit, numbers and cost of the run. None has run yet.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test</th><th>What it checks</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><code>oversell</code></td><td>10,000 buyers race for 1,000 units. Count the units sold beyond the stock.</td><td class="state todo">Not run</td></tr>
+          <tr><td><code>hot-key</code></td><td>The same burst against 1 shard and 10. Compare throttled requests and p95.</td><td class="state todo">Not run</td></tr>
+          <tr><td><code>ttl-return</code></td><td>Unconfirmed holds all come back, exactly once, with the sweeper on and with it off.</td><td class="state todo">Not run</td></tr>
+          <tr><td><code>idempotency</code></td><td>One request sent 50 times at once with the same key creates one hold.</td><td class="state todo">Not run</td></tr>
+          <tr><td><code>burst</code></td><td>Zero to peak in 5 seconds. Error rate, p95 and cold starts at the start of the burst.</td><td class="state todo">Not run</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>What it costs</h2>
+    <p>Close to nothing while idle. There's no always-on compute and the table is on demand. While the lab is deployed, the standing charges are 14 CloudWatch alarms and a dashboard, pro-rated by the hour. A load test is paid per request. I'll record what each run actually cost in its runbook.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Resource</th><th>Approx. price</th></tr></thead>
+        <tbody>
+          <tr><td>HTTP API requests</td><td class="num">~$1.00 per million</td></tr>
+          <tr><td>Lambda requests (arm64)</td><td class="num">~$0.20 per million</td></tr>
+          <tr><td>Lambda compute (arm64)</td><td class="num">~$0.0000133 per GB-second</td></tr>
+          <tr><td>DynamoDB on-demand writes</td><td class="num">~$0.625 per million units</td></tr>
+          <tr><td>CloudWatch alarm</td><td class="num">~$0.10 per alarm-month</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">On-demand list prices (us-east-1) used for planning, not a bill.</p>
+    <p>The lab is destroyed after every session. Only the bootstrap layer stays: the state bucket, its KMS key and the CI roles. An AWS Budget alert exists before the first apply.</p>
+
+    <h2>What's left</h2>
+    <ul class="dots">
+      <li><strong>Deploy it and run the five tests.</strong> Results go in the runbooks and on this page as measured, including any that fall short.</li>
+      <li><strong>A replay tool for the dead-letter queue,</strong> so a failed stream batch can be reprocessed before the stream drops it.</li>
+      <li><strong>Tuning from data.</strong> Shard count, stage limits and function memory are starting values. The hot-key and burst tests should set them.</li>
+    </ul>
+
+    <h2>What production would add</h2>
+    <p>Some gaps are on purpose, to keep the lab small and cheap. Before real buyers I'd close them:</p>
+    <ul class="dots">
+      <li><strong>Authentication.</strong> A JWT authorizer, so keys and per-buyer limits are tied to a user. Today one client can hold as many units as it can send requests for.</li>
+      <li><strong>CloudFront and WAF in front.</strong> WAF can't attach to an HTTP API directly. CloudFront could also cache the stock read for a second, so repeat reads never reach the table.</li>
+      <li><strong>A waiting room</strong> for drops far bigger than this one, so buyers queue outside instead of hitting the API all at once.</li>
+      <li><strong>Real payments,</strong> with confirm as one step of a flow that can fail and give the units back.</li>
+      <li><strong>Customer-managed keys and deletion protection</strong> on the table, and alarms routed to a pager instead of email.</li>
+    </ul>
+
+  </div></div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Talha Imtiaz · DevOps Engineer</span>
+    <ul>
+      <li><a href="https://github.com/talhaimtiaz09/flash-sale-reservations">Repository</a></li>
+      <li><a href="https://talhaimtiaz.me">talhaimtiaz.me</a></li>
+      <li><a href="https://github.com/talhaimtiaz09">GitHub</a></li>
+      <li><a href="https://linkedin.com/in/talha-imtiaz342">LinkedIn</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
