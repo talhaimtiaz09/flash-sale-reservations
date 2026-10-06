@@ -13,6 +13,8 @@ repo that anyone can rerun. Until a test has run, it says "Not run".
 
 **Project page:** https://talhaimtiaz09.github.io/flash-sale-reservations/
 
+![Architecture: buyers call an API Gateway HTTP API that throttles and routes to reserve, confirm and get_sale Lambdas, all using one DynamoDB table. The table's stream feeds a release function, and an EventBridge schedule runs a sweeper; both return stock from expired holds. CloudWatch alarms email through SNS.](docs/images/flash-architecture.png)
+
 ## Status
 
 | Part | State |
@@ -34,6 +36,26 @@ repo that anyone can rerun. Until a test has run, it says "Not run".
 
 Sales are created by `scripts/seed_sale.py`, not through the API.
 
+## How it works
+
+A reservation is one DynamoDB transaction with three writes: take units from a
+stock shard only if it has enough, write the hold, and write the idempotency key
+only if it is new. They succeed or fail together.
+
+![One reservation as a single transaction: decrement a stock shard if it has enough, write the hold, write the idempotency key if new. Shard empty means try the next shard; key exists means return the same hold.](docs/images/flash-reserve-transaction.png)
+
+One stock item puts every buyer on one partition, which throttles and
+conflicts. The stock is split across shard items instead; each buyer starts at
+a random shard and moves on if it is empty.
+
+![Two designs: every buyer writing one stock item is throttled; stock split into shards spreads the writes, and remaining stock is the sum of the shards.](docs/images/flash-sharded-stock.png)
+
+A hold either becomes an order in time or its units go back to stock, through
+the sweeper or the stream consumer after a TTL delete. Both write a `RETURN#`
+marker in the same transaction, so units come back once.
+
+![Hold lifecycle: confirmed in time it becomes an order; expired, confirm is refused and the units return via the sweeper or the TTL delete stream, once, guarded by a RETURN# marker.](docs/images/flash-hold-lifecycle.png)
+
 ## Layout
 
 ```
@@ -53,7 +75,7 @@ terraform/
 scripts/seed_sale.py
 loadtest/         k6: oversell, hot-key, ttl-return, idempotency, burst
 runbooks/         one per test, filled in only from real runs
-docs/index.html   the project page (GitHub Pages); diagrams go in docs/images/
+docs/index.html   the project page (GitHub Pages); diagrams in docs/images/
 prompts/          ChatGPT prompts for those diagrams
 .github/workflows/  terraform.yml, lambdas.yml
 ```
