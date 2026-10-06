@@ -1,0 +1,43 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+tfplan
+*.tfplan
+plan.txt
+# Lambda zips built by archive_file during plan
+.build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# k6 results are committed by hand after a run; scratch output is not
+loadtest/results/*.tmp.json
+
+# Cloud credentials and keys
+.aws/
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Local tooling and editors
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
